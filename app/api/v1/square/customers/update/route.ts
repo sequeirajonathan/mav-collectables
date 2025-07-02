@@ -22,25 +22,54 @@ export async function PUT(request: Request) {
 
     const { customerId, ...updateData } = validatedData;
 
+    // Check for phone number conflicts if phone number is being updated
+    if (updateData.phoneNumber) {
+      try {
+        const squareClient = createSquareClient();
+        // Convert 10-digit phone to E164 format for Square search
+        const e164PhoneNumber = `+1${updateData.phoneNumber}`;
+        
+        const searchResponse = await squareClient.customers.search({
+          query: {
+            filter: {
+              phoneNumber: {
+                exact: e164PhoneNumber
+              }
+            }
+          }
+        });
+
+        const existingCustomer = searchResponse.customers?.[0];
+        if (existingCustomer && existingCustomer.id !== customerId) {
+          console.error('Phone number conflict detected:', {
+            newPhoneNumber: e164PhoneNumber,
+            existingCustomerId: existingCustomer.id,
+            currentCustomerId: customerId
+          });
+          return NextResponse.json({
+            error: 'Phone number conflict',
+            message: 'This phone number is already registered to another customer',
+            existingCustomerId: existingCustomer.id
+          }, { status: 409 });
+        }
+      } catch (error) {
+        console.error('Error checking phone number conflicts:', error);
+        // Continue with update if we can't check for conflicts
+      }
+    }
+
     // Validate address with Shippo if address is provided
     if (updateData.address) {
       const validationResult = await validateAddress(updateData.address);
       
-      if (!validationResult.isValid) {
-        return NextResponse.json({
-          error: 'Invalid address',
-          details: validationResult.messages,
-        }, { status: 400 });
-      }
-
-      // If there's a suggested address, return it for user confirmation
-      if (validationResult.validatedAddress && 
-          JSON.stringify(validationResult.validatedAddress) !== JSON.stringify(updateData.address)) {
+      // Show address suggestion if there are validation messages (corrections) or if address is invalid
+      if (validationResult.messages.length > 0 || !validationResult.isValid) {
+        // Return address suggestion response format
         return NextResponse.json({
           status: 'address_suggestion',
           originalAddress: updateData.address,
-          suggestedAddress: validationResult.validatedAddress,
-          messages: validationResult.messages,
+          suggestedAddress: validationResult.validatedAddress || updateData.address,
+          messages: validationResult.messages
         });
       }
 
@@ -58,7 +87,7 @@ export async function PUT(request: Request) {
       givenName: updateData.givenName,
       familyName: updateData.familyName,
       emailAddress: updateData.emailAddress,
-      phoneNumber: updateData.phoneNumber,
+      phoneNumber: updateData.phoneNumber ? `+1${updateData.phoneNumber}` : undefined,
       address: updateData.address ? {
         addressLine1: updateData.address.addressLine1,
         addressLine2: updateData.address.addressLine2,

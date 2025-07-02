@@ -125,6 +125,7 @@ export interface SquareCustomer {
     emailUnsubscribed?: boolean;
   };
   creationSource?: string;
+  segmentIds?: string[];
 }
 
 export interface UpdateSquareCustomerData {

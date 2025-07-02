@@ -1,96 +1,151 @@
-import { NextResponse } from "next/server";
-import { createSquareClient } from "@lib/square";
-import { searchCustomerSchema } from "@validations/square-customer";
-import { z } from "zod";
-import { serializeBigIntValues } from "@utils/serialization";
-import { Square } from "square";
+import { NextRequest, NextResponse } from 'next/server';
+import { createSquareClient } from '@lib/square';
+import { serializeBigIntValues } from '@utils/serialization';
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    console.log('Received request body:', body);
-    
-    const validatedData = searchCustomerSchema.parse(body);
-    console.log('Validated data:', validatedData);
+    const { email, phoneNumber, referenceId } = await req.json();
 
-    // Format phone number to E164 format (e.g., +19545405276)
-    // Remove any existing +1 prefix and non-digit characters, then add +1
-    const formattedPhoneNumber = `+1${validatedData.phoneNumber.replace(/^\+1|\D/g, '')}`;
-    console.log('Formatted phone number for Square:', formattedPhoneNumber);
+    console.log('=== Customer Search Request ===');
+    console.log('Email:', email);
+    console.log('Phone Number:', phoneNumber);
+    console.log('Reference ID:', referenceId);
 
-    const client = createSquareClient();
-    const searchQuery = {
-      count: true,
-      query: {
-        filter: {
-          phoneNumber: {
-            exact: formattedPhoneNumber,
-          },
-          ...(validatedData.emailAddress && {
-            emailAddress: {
-              exact: validatedData.emailAddress,
-            },
-          }),
-          ...(validatedData.referenceId && {
-            referenceId: {
-              exact: validatedData.referenceId,
-            },
-          }),
-        },
-        sort: {
-          field: (validatedData.sortField || "DEFAULT") as Square.CustomerSortField,
-          order: (validatedData.sortOrder || "ASC") as Square.SortOrder,
-        },
-      },
-    };
-    
-    console.log('Square search query:', JSON.stringify(searchQuery, null, 2));
-    
-    const response = await client.customers.search(searchQuery);
-    console.log('Square API response:', JSON.stringify(response, serializeBigIntValues, 2));
-
-    // Transform the Square response to match our interface
-    const customers = (response.customers || []).map(customer => ({
-      id: customer.id || '',
-      emailAddress: customer.emailAddress,
-      givenName: customer.givenName,
-      familyName: customer.familyName,
-      phoneNumber: customer.phoneNumber,
-      address: customer.address ? {
-        addressLine1: customer.address.addressLine1,
-        addressLine2: customer.address.addressLine2,
-        locality: customer.address.locality,
-        postalCode: customer.address.postalCode,
-        administrativeDistrictLevel1: customer.address.administrativeDistrictLevel1,
-        country: customer.address.country,
-      } : undefined,
-    }));
-
-    const responseData = { customers };
-    const serializedResponse = JSON.stringify(responseData, serializeBigIntValues);
-
-    return new NextResponse(serializedResponse, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-  } catch (error) {
-    console.error("Error searching Square customers:", error);
-    if (error instanceof z.ZodError) {
+    if (!email && !phoneNumber && !referenceId) {
+      console.log('Error: No email, phone, or reference ID provided');
       return NextResponse.json(
-        {
-          error: "Invalid request data",
-          details: error.errors,
-        },
+        { error: 'Email, phone number, or reference ID is required' },
         { status: 400 }
       );
     }
+
+    const client = createSquareClient();
+    const customers = [];
+
+    // Search by reference ID first (highest priority to prevent duplicates)
+    if (referenceId) {
+      try {
+        console.log('Searching by reference ID:', referenceId);
+        const referenceResponse = await client.customers.search({
+          query: {
+            filter: {
+              referenceId: {
+                exact: referenceId
+              }
+            }
+          }
+        });
+        
+        console.log('Reference ID search response:', {
+          customersFound: referenceResponse.customers?.length || 0,
+          customers: referenceResponse.customers?.map(c => ({
+            id: c.id,
+            email: c.emailAddress,
+            phone: c.phoneNumber,
+            name: `${c.givenName} ${c.familyName}`,
+            referenceId: c.referenceId
+          }))
+        });
+        
+        if (referenceResponse.customers) {
+          customers.push(...referenceResponse.customers);
+        }
+      } catch (error) {
+        console.error('Error searching by reference ID:', error);
+      }
+    }
+
+    // Search by phone number (second priority)
+    if (phoneNumber) {
+      try {
+        console.log('Searching by phone number:', phoneNumber);
+        const phoneResponse = await client.customers.search({
+          query: {
+            filter: {
+              phoneNumber: {
+                exact: phoneNumber
+              }
+            }
+          }
+        });
+        
+        console.log('Phone search response:', {
+          customersFound: phoneResponse.customers?.length || 0,
+          customers: phoneResponse.customers?.map(c => ({
+            id: c.id,
+            email: c.emailAddress,
+            phone: c.phoneNumber,
+            name: `${c.givenName} ${c.familyName}`
+          }))
+        });
+        
+        if (phoneResponse.customers) {
+          customers.push(...phoneResponse.customers);
+        }
+      } catch (error) {
+        console.error('Error searching by phone:', error);
+      }
+    }
+
+    // Search by email if provided
+    if (email) {
+      try {
+        console.log('Searching by email:', email);
+        const emailResponse = await client.customers.search({
+          query: {
+            filter: {
+              emailAddress: {
+                exact: email
+              }
+            }
+          }
+        });
+        
+        console.log('Email search response:', {
+          customersFound: emailResponse.customers?.length || 0,
+          customers: emailResponse.customers?.map(c => ({
+            id: c.id,
+            email: c.emailAddress,
+            phone: c.phoneNumber,
+            name: `${c.givenName} ${c.familyName}`
+          }))
+        });
+        
+        if (emailResponse.customers) {
+          customers.push(...emailResponse.customers);
+        }
+      } catch (error) {
+        console.error('Error searching by email:', error);
+      }
+    }
+
+    // Remove duplicates based on customer ID
+    const uniqueCustomers = customers.filter((customer, index, self) => 
+      index === self.findIndex(c => c.id === customer.id)
+    );
+
+    console.log('=== Final Results ===');
+    console.log('Total unique customers found:', uniqueCustomers.length);
+    console.log('Customers:', uniqueCustomers.map(c => ({
+      id: c.id,
+      email: c.emailAddress,
+      phone: c.phoneNumber,
+      name: `${c.givenName} ${c.familyName}`,
+      referenceId: c.referenceId
+    })));
+
+    // Serialize the response to handle BigInt values
+    const serializedCustomers = JSON.parse(JSON.stringify(uniqueCustomers, serializeBigIntValues));
+
+    return NextResponse.json({ 
+      customers: serializedCustomers,
+      exists: uniqueCustomers.length > 0
+    });
+
+  } catch (error) {
+    console.error('Error searching for customer:', error);
     return NextResponse.json(
-      {
-        error: "Failed to search customers",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: 'Failed to search for customer' },
       { status: 500 }
     );
   }

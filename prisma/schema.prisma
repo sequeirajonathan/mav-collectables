@@ -101,3 +101,65 @@ model Installer {
 
   @@map("installers")
 }
+
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String?  // Clerk user ID (nullable for guests)
+  data      Json     // CartData (see @/interfaces/cart)
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cart")
+}
+
+model Order {
+  id              String   @id @default(uuid())
+  squareCustomerId String  // Square customer ID
+  squarePaymentId String   // Square payment ID
+  email           String   // Customer email
+  userId          String?  // Clerk user ID (nullable for guests)
+  amount          Int      // Amount in cents
+  status          String   @default("pending") // pending, completed, failed, refunded
+  items           Json     // Order items
+  customerInfo    Json?    // Guest customer info (nullable for authenticated users)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("orders")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  STAFF
+  EVENT
+}
+
+model user_profile {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  username    String?
+  firstName   String
+  lastName    String
+  phoneNumber String
+  role        UserRole @default(USER)
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  country     String?  @default("US")
+  // Billing address fields
+  billingFirstName   String?
+  billingLastName    String?
+  billingEmail       String?
+  billingPhoneNumber String?
+  billingAddress     String?
+  billingCity        String?
+  billingState       String?
+  billingZipCode     String?
+  billingCountry     String? @default("US")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  // Add any other fields as needed
+}

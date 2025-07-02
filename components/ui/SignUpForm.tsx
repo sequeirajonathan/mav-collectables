@@ -8,7 +8,7 @@ import { Label } from "@components/ui/label";
 import { PhoneInput } from "@components/ui/PhoneInput";
 import Link from "next/link";
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSignUp, useUser } from "@clerk/nextjs";
 import { UserRole } from "@interfaces/roles";
 import { useUserMetadata } from "@hooks/useUserMetadata";
@@ -19,12 +19,24 @@ interface SignupFormProps {
   hideLoginLink?: boolean;
 }
 
+interface SquareCustomer {
+  id: string;
+  givenName?: string;
+  familyName?: string;
+  emailAddress?: string;
+  phoneNumber?: string;
+}
+
 export function SignupForm({ hideLoginLink = false }: SignupFormProps) {
   const { signUp, isLoaded: signUpLoaded } = useSignUp();
   const [phoneValue, setPhoneValue] = useState("");
   const { user } = useUser();
-  const { setUserRole } = useUserMetadata();
+  const { setUserRole } = useUserMetadata(user?.id || '');
   const [cooldown, setCooldown] = useState(0);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [existingCustomer, setExistingCustomer] = useState<SquareCustomer | null>(null);
+  const [needsNameInput, setNeedsNameInput] = useState(false);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -34,12 +46,83 @@ export function SignupForm({ hideLoginLink = false }: SignupFormProps) {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
+  const handleCustomerSetup = useCallback(async (firstName: string, lastName: string) => {
+    try {
+      const phoneNumber = signUp?.phoneNumber;
+      if (!phoneNumber) {
+        toast.error("Phone number is required");
+        return;
+      }
+
+      console.log('Setting up customer with:', {
+        firstName,
+        lastName,
+        email: signUp?.emailAddress,
+        phone: phoneNumber
+      });
+
+      // Check if we have an existing customer from state
+      if (existingCustomer) {
+        // Update existing customer
+        await axios.put(`/api/v1/update-square-customer/${existingCustomer.id}`, {
+          emailAddress: signUp?.emailAddress,
+          givenName: firstName,
+          familyName: lastName,
+        });
+      } else {
+        // Create new Square customer
+        await axios.post("/api/v1/create-square-customer", {
+          emailAddress: signUp?.emailAddress,
+          givenName: firstName,
+          familyName: lastName,
+          phoneNumber: phoneNumber.replace(/\D/g, "").slice(-10),
+          address: {
+            country: "US",
+            firstName: firstName,
+            lastName: lastName,
+            addressLine1: "Pending",
+            locality: "Pending",
+            postalCode: "00000",
+          },
+          referenceId: user?.id,
+        });
+      }
+
+      // Set user role
+      const result = await setUserRole(UserRole.USER);
+      if (!result.success) {
+        toast.error(result.error || "Failed to set user role");
+      }
+
+      // Update Clerk metadata with first and last name
+      try {
+        await user?.update({
+          unsafeMetadata: {
+            firstName: firstName,
+            lastName: lastName,
+            role: UserRole.USER
+          }
+        });
+        console.log('Updated Clerk unsafe metadata with name and role');
+      } catch (error) {
+        console.error('Failed to update Clerk metadata:', error);
+      }
+
+      // Mark setup as complete
+      setNeedsNameInput(false);
+    } catch (error) {
+      console.error("Error handling Square customer:", error);
+      toast.error("Failed to process customer information");
+    }
+  }, [signUp, user, setUserRole]);
+
   // Check for existing Square customer and handle role setting
   useEffect(() => {
     const handleSquareCustomer = async () => {
       if (
         signUpLoaded &&
         signUp?.status === "complete" &&
+        user?.id &&
         !(user?.unsafeMetadata as Record<string, unknown>)?.role
       ) {
         try {
@@ -49,55 +132,106 @@ export function SignupForm({ hideLoginLink = false }: SignupFormProps) {
             return;
           }
 
-          // Search for existing Square customer
-          const searchResponse = await axios.post(
+          console.log('Checking for existing Square customer with user ID:', user.id);
+
+          // First, search by reference ID (user ID) to prevent duplicates
+          const referenceIdSearchResponse = await axios.post(
             "/api/v1/search-square-customer",
             {
-              phoneNumber: phoneNumber.replace(/\D/g, "").slice(-10), // Remove non-digits and get last 10 digits
+              referenceId: user.id,
             }
           );
 
-          if (searchResponse.data.customers?.length > 0) {
-            // Customer exists, update their information
-            const customer = searchResponse.data.customers[0];
-            await axios.put(`/api/v1/update-square-customer/${customer.id}`, {
-              emailAddress: signUp.emailAddress,
-              givenName: signUp.firstName || "",
-              familyName: signUp.lastName || "",
-            });
-          } else {
-            // Create new Square customer
-            await axios.post("/api/v1/create-square-customer", {
-              emailAddress: signUp.emailAddress,
-              givenName: signUp.firstName || "",
-              familyName: signUp.lastName || "",
-              phoneNumber: phoneNumber.replace(/\D/g, "").slice(-10),
-              address: {
-                country: "US",
-                firstName: signUp.firstName || "",
-                lastName: signUp.lastName || "",
-                addressLine1: "Pending",
-                locality: "Pending",
-                postalCode: "00000",
-              },
-              referenceId: user?.id,
-            });
+          if (referenceIdSearchResponse.data.customers?.length > 0) {
+            // Customer already exists with this user ID, just set role
+            const customer = referenceIdSearchResponse.data.customers[0];
+            console.log('Found existing customer by reference ID:', customer.id);
+            setExistingCustomer(customer);
+            setFirstName(customer.givenName || "");
+            setLastName(customer.familyName || "");
+            
+            // Set user role without creating/updating customer
+            const result = await setUserRole(UserRole.USER);
+            if (!result.success) {
+              toast.error(result.error || "Failed to set user role");
+            }
+
+            // Update Clerk metadata
+            try {
+              await user?.update({
+                unsafeMetadata: {
+                  firstName: customer.givenName || "",
+                  lastName: customer.familyName || "",
+                  role: UserRole.USER
+                }
+              });
+              console.log('Updated Clerk unsafe metadata with existing customer info');
+            } catch (error) {
+              console.error('Failed to update Clerk metadata:', error);
+            }
+
+            setNeedsNameInput(false);
+            return;
           }
 
-          // Set user role
-          const result = await setUserRole(UserRole.USER);
-          if (!result.success) {
-            toast.error(result.error || "Failed to set user role");
+          // If no customer found by reference ID, search by phone number
+          const phoneSearchResponse = await axios.post(
+            "/api/v1/search-square-customer",
+            {
+              phoneNumber: phoneNumber.replace(/\D/g, "").slice(-10),
+            }
+          );
+
+          if (phoneSearchResponse.data.customers?.length > 0) {
+            // Customer exists by phone, update with reference ID and use their info
+            const customer = phoneSearchResponse.data.customers[0];
+            console.log('Found existing customer by phone, updating reference ID:', customer.id);
+            setExistingCustomer(customer);
+            setFirstName(customer.givenName || "");
+            setLastName(customer.familyName || "");
+            
+            // Update existing customer with reference ID
+            await axios.put(`/api/v1/update-square-customer/${customer.id}`, {
+              referenceId: user.id,
+              emailAddress: signUp?.emailAddress,
+            });
+
+            // Set user role
+            const result = await setUserRole(UserRole.USER);
+            if (!result.success) {
+              toast.error(result.error || "Failed to set user role");
+            }
+
+            // Update Clerk metadata
+            try {
+              await user?.update({
+                unsafeMetadata: {
+                  firstName: customer.givenName || "",
+                  lastName: customer.familyName || "",
+                  role: UserRole.USER
+                }
+              });
+              console.log('Updated Clerk unsafe metadata with existing customer info');
+            } catch (error) {
+              console.error('Failed to update Clerk metadata:', error);
+            }
+
+            setNeedsNameInput(false);
+          } else {
+            // New customer, require name input
+            console.log('No existing customer found, requiring name input');
+            setNeedsNameInput(true);
           }
         } catch (error) {
-          console.error("Error handling Square customer:", error);
-          toast.error("Failed to process customer information");
+          console.error("Error checking Square customer:", error);
+          // If search fails, require name input as fallback
+          setNeedsNameInput(true);
         }
       }
     };
 
     handleSquareCustomer();
-  }, [signUp, user, setUserRole, signUpLoaded]);
+  }, [signUp, user, signUpLoaded, setUserRole]);
 
   return (
     <div className="max-w-md mx-auto">
@@ -392,59 +526,63 @@ export function SignupForm({ hideLoginLink = false }: SignupFormProps) {
             Complete your profile
           </h1>
           <div className="space-y-4">
-            <Clerk.Field name="username">
-              <Clerk.Label asChild>
-                <Label htmlFor="username">Username</Label>
-              </Clerk.Label>
-              <Clerk.Input
-                asChild
-                className="border-2 border-[#E6B325] bg-[#181d29] text-white focus:border-[#FFD966]"
-              >
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Choose a username"
-                  required
-                />
-              </Clerk.Input>
-              <Clerk.FieldError />
-            </Clerk.Field>
-
-            <Clerk.Field name="phoneNumber">
-              <Clerk.Label asChild>
-                <Label htmlFor="phoneNumber">Phone Number (US Only)</Label>
-              </Clerk.Label>
-              <Clerk.Input
-                asChild
-                className="border-2 border-[#E6B325] bg-[#181d29] text-white focus:border-[#FFD966]"
-              >
-                <PhoneInput
-                  id="phoneNumber"
-                  type="tel"
-                  placeholder="(555) 123-4567"
-                  required
-                  value={phoneValue}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setPhoneValue(value);
-                    
-                    // Format the value for Clerk (E.164 format)
-                    const digits = value.replace(/\D/g, '');
-                    const e164Value = `+1${digits}`;
-                    
-                    // Update the input value directly
-                    e.target.value = e164Value;
+            {needsNameInput ? (
+              <>
+                <p className="text-center text-gray-400 mb-4">
+                  Please provide your name to complete your profile.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      placeholder="First name"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className="border-2 border-[#E6B325] bg-[#181d29] text-white focus:border-[#FFD966]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      placeholder="Last name"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      className="border-2 border-[#E6B325] bg-[#181d29] text-white focus:border-[#FFD966]"
+                      required
+                    />
+                  </div>
+                </div>
+                <Button 
+                  onClick={async () => {
+                    if (!firstName || !lastName) {
+                      toast.error("Please provide both first and last name");
+                      return;
+                    }
+                    await handleCustomerSetup(firstName, lastName);
                   }}
-                />
-              </Clerk.Input>
-              <Clerk.FieldError />
-            </Clerk.Field>
-
-            <SignUp.Action submit asChild>
-              <Button type="submit" className="w-full mt-4" variant="gold">
-                Continue
-              </Button>
-            </SignUp.Action>
+                  className="w-full mt-4" 
+                  variant="gold"
+                >
+                  Complete Setup
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-center text-gray-400 mb-4">
+                  Your account has been created successfully! You can now access your dashboard.
+                </p>
+                <SignUp.Action submit asChild>
+                  <Button type="submit" className="w-full mt-4" variant="gold">
+                    Go to Dashboard
+                  </Button>
+                </SignUp.Action>
+              </>
+            )}
           </div>
         </SignUp.Step>
       </SignUp.Root>

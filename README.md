@@ -87,3 +87,58 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Square Web Payments SDK Setup
+
+This app now uses Square's Web Payments SDK for in-house payment processing, supporting multiple payment methods:
+
+- **Credit/Debit Cards** - Standard card payments with custom styling
+- **Apple Pay** - Native Apple Pay integration (requires HTTPS and domain verification)
+- **Google Pay** - Native Google Pay integration
+- **Afterpay/Clearpay** - Buy now, pay later (available in supported regions)
+- **Cash App Pay** - Direct Cash App integration
+
+### Environment Variables Required
+
+Add these to your `.env.local` file:
+
+```env
+# Square Configuration
+NEXT_PUBLIC_SQUARE_APP_ID=your_square_application_id
+SQUARE_SECRET_KEY=your_square_secret_key
+SQUARE_ENVIRONMENT=sandbox  # or 'production'
+NEXT_PUBLIC_SQUARE_ENVIRONMENT=sandbox  # or 'production' (for client-side use)
+SQUARE_LOCATION_ID=your_square_location_id  # Your Square location ID for inventory and payments
+
+# Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+CLERK_SECRET_KEY=your_clerk_secret_key
+```
+
+### Features
+
+✅ **No External Redirects** - All payments processed in-house with your custom UI
+✅ **Multiple Payment Methods** - Support for cards, Apple Pay, Google Pay, Afterpay, and Cash App Pay
+✅ **Custom Styling** - Full control over payment form appearance to match your theme
+✅ **Secure Token Processing** - Square handles sensitive card data, you only receive secure tokens
+✅ **Guest Checkout** - Support for both authenticated and guest checkout flows
+✅ **TypeScript Support** - Full type safety throughout the payment flow
+
+### Payment Flow
+
+1. **Cart → Checkout** - User adds items and proceeds to checkout
+2. **Customer Info** - Collect shipping/billing information
+3. **Payment Page** - Square Web Payments SDK renders payment methods
+4. **Token Generation** - Square creates secure payment token
+5. **Backend Processing** - Your API processes the token with Square's API
+6. **Success** - User redirected to confirmation page
+
+### Browser Support
+
+- **Apple Pay**: Safari on macOS/iOS with Apple Pay setup
+- **Google Pay**: Chrome/Edge with Google Pay setup
+- **Afterpay**: Supported regions (US, UK, Australia, etc.)
+- **Cash App Pay**: Users with Cash App accounts
+- **Cards**: All modern browsers
+
+The SDK automatically detects available payment methods and only shows supported options to each user.

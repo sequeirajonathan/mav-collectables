@@ -7,7 +7,9 @@ import { useCart } from "@contexts/CartContext";
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import React, { useEffect, useState } from 'react';
 import { Button } from "@components/ui/button";
-import { formatMoney } from '@utils/formatMoney';
+import { formatMoney } from '@utils';
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
 interface CartItemType {
   id: string;
@@ -36,6 +38,8 @@ const ImagePlaceholder = () => {
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, totalItems, totalPrice } = useCart();
+  const { user, isLoaded } = useUser();
+  const router = useRouter();
   const [continueShoppingUrl, setContinueShoppingUrl] = useState("/category/tcg");
 
   useEffect(() => {
@@ -49,6 +53,26 @@ export default function CartPage() {
     if (newQuantity >= 1) {
       updateQuantity(itemId, newQuantity);
     }
+  };
+
+  const handleProceedToCheckout = () => {
+    if (!isLoaded) {
+      return; // Still loading auth state
+    }
+
+    if (!user) {
+      // Redirect to sign-in with return URL to cart
+      router.push('/sign-in?redirect=/cart');
+      return;
+    }
+
+    // Proceed to checkout
+    router.push('/checkout');
+  };
+
+  const handleGuestCheckout = () => {
+    // Proceed to guest checkout
+    router.push('/checkout/guest');
   };
 
   const CartItem = ({ item }: { item: CartItemType }) => {
@@ -197,9 +221,20 @@ export default function CartPage() {
               <Button
                 variant="gold"
                 className="w-full"
+                onClick={handleProceedToCheckout}
+                disabled={!isLoaded}
               >
                 Proceed to Checkout
               </Button>
+              {!user && (
+                <Button
+                  variant="gold"
+                  className="w-full mt-2"
+                  onClick={handleGuestCheckout}
+                >
+                  Proceed as Guest
+                </Button>
+              )}
               <Link
                 href={continueShoppingUrl}
                 className="block text-center mt-4 text-[#E6B325] hover:text-[#FFD966] transition-colors"

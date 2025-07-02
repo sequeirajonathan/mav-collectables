@@ -61,6 +61,22 @@ export default function Home() {
   ];
 
   const getTopCardGames = () => {
+    // In sandbox, only show Pokémon
+    if (process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT !== 'production') {
+      const pokemonCategory = CATEGORY_MAPPING.pokemon;
+      if (pokemonCategory) {
+        return [{
+          title: pokemonCategory.displayName,
+          href: `/category/${pokemonCategory.slug}`,
+          image: "/pokemon-logo.png",
+          squareCategory: pokemonCategory.displayName,
+          scaleClass: "scale-85 md:scale-95",
+        }];
+      }
+      return [];
+    }
+
+    // In production, show all top card games
     const topSlugs = [
       "pokemon",
       "magic",

@@ -18,16 +18,23 @@ const isPublicRoute = createRouteMatcher([
   '/api/v1/google-reviews(.*)',
   '/api/v1/category(.*)',
   '/api/v1/search(.*)',
+  '/api/v1/product(.*)',
   '/api/v1/search-square-customer(.*)',
   '/api/v1/create-square-customer(.*)',
   '/api/v1/update-square-customer(.*)',
   '/api/v1/print-jobs(.*)',
   '/api/v1/installers(.*)',
+  '/api/v1/cart(.*)',
+  '/api/v1/checkout/merchant-settings(.*)',
+  '/api/v1/checkout/process-payment(.*)',
+  '/api/v1/user/metadata(.*)',
   '/',         
   '/events(.*)', 
   '/category(.*)',
   '/search(.*)', 
+  '/product(.*)',
   '/cart(.*)',
+  '/checkout(.*)',
   '/maintenance(.*)',
 ])
 
@@ -52,6 +59,7 @@ export default clerkMiddleware(async (auth, req) => {
   const isHomePage = req.nextUrl.pathname === '/'
   const isLoginPage = req.nextUrl.pathname === '/print-agent/login'
   const isApiRequest = req.nextUrl.pathname.startsWith('/api/')
+  const isPublicRouteMatch = isPublicRoute(req)
 
 
   // Handle Electron app requests first
@@ -124,12 +132,9 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // If the request is not for a public route, protect it
-  if (!isPublicRoute(req)) {
-    console.log('Protecting non-public route')
+  if (!isPublicRouteMatch) {
     await auth.protect()
   }
-
-  console.log('Allowing access to route')
   return NextResponse.next()
 })
 

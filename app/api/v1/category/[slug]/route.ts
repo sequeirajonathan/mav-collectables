@@ -120,10 +120,7 @@ export async function GET(
       // Fetch inventory counts for each variation ID
       const inventoryResponse = await retryWithBackoff(async () => {
         return await client.inventory.batchGetCounts({
-          catalogObjectIds: [
-            ...variationIds.filter((id): id is string => typeof id === "string"),
-            ...categoryIds, // (though passing categoryIds here is not strictly necessary)
-          ],
+          catalogObjectIds: variationIds.filter((id): id is string => typeof id === "string"),
           locationIds: ACTIVE_LOCATION_IDS,
         });
       });

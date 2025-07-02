@@ -13,4 +13,11 @@
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #E6B325 #181f2a;
+}
+
+/* Apple Pay Button Styles */
+.apple-pay-button {
+  -webkit-appearance: -apple-pay-button;
+  -apple-pay-button-type: plain;
+  -apple-pay-button-style: black;
 } 

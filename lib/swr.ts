@@ -213,6 +213,63 @@ const fetcherPut = async <TResponse = unknown, TRequest = unknown>(
   }
 };
 
+// Enhanced PATCH fetcher with type checking
+const fetcherPatch = async <TResponse = unknown, TRequest = unknown>(
+  url: string,
+  body: TRequest
+): Promise<TResponse> => {
+  try {
+    const response = await axiosClient.patch<unknown>(url, body, {
+      timeout: 10000,
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const data = response.data;
+
+    // Handle different response types
+    if (isArray<TResponse>(data)) {
+      return data as unknown as TResponse;
+    } else if (isObject(data)) {
+      // If we expect an object, validate it has the expected shape
+      if ('data' in data && isArray<TResponse>((data as ApiResponse<TResponse[]>).data)) {
+        return (data as ApiResponse<TResponse[]>).data as unknown as TResponse;
+      }
+      return data as TResponse;
+    } else {
+      throw new ResourceError(
+        "Unexpected response format",
+        500,
+        "INVALID_FORMAT",
+        { received: typeof data, data }
+      );
+    }
+  } catch (error) {
+    if (error instanceof ResourceError) {
+      throw error;
+    }
+    if (error instanceof AxiosError) {
+      if (error.code === "ECONNABORTED") {
+        throw new ResourceError("Request timed out", 408, "TIMEOUT");
+      }
+      if (error.response) {
+        throw new ResourceError(
+          error.response.data?.message || "Request failed",
+          error.response.status,
+          error.code,
+          error.response.data
+        );
+      }
+      if (error.request) {
+        throw new ResourceError("No response received", 0, "NO_RESPONSE");
+      }
+    }
+    if (error instanceof Error) {
+      throw new ResourceError(error.message, 500, "UNKNOWN_ERROR");
+    }
+    throw new ResourceError("Unknown error occurred", 500, "UNKNOWN_ERROR", error);
+  }
+};
+
 // Enhanced SWR configuration
 const swrConfig: SWRConfiguration = {
   revalidateOnFocus: true,
@@ -410,4 +467,4 @@ export function useResource<TResponse = unknown, TRequest = unknown>(
   };
 }
 
-export { fetcherPost, fetcherPut, swrConfig };
+export { fetcher, fetcherPost, fetcherPut, fetcherPatch, swrConfig };

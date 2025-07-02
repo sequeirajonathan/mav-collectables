@@ -8,7 +8,7 @@ import { useCart } from "@contexts/CartContext";
 import toast from "react-hot-toast";
 import { NormalizedCatalogItem } from "@interfaces";
 import React, { useState, useEffect } from 'react';
-import { formatMoney } from '@utils/formatMoney';
+import { formatMoney, getMaxQuantity } from '@utils';
 
 interface ProductCardProps {
   product: NormalizedCatalogItem;
@@ -19,15 +19,6 @@ interface ProductCardProps {
     quality: number;
   };
 }
-
-// Helper function to determine max quick add quantity based on stock
-const getMaxQuickAddQuantity = (stock: number): number => {
-  if (stock <= 5) return 1;
-  if (stock <= 10) return 1;
-  if (stock <= 20) return 3;
-  if (stock <= 50) return 4;
-  return 10; // Default max for stock > 50
-};
 
 export function ProductCard({
   product,
@@ -54,7 +45,7 @@ export function ProductCard({
       setIsLoading(true);
 
       // Check if we've reached the quick add limit
-      const maxQuickAdd = getMaxQuickAddQuantity(stockCount);
+      const maxQuickAdd = getMaxQuantity(stockCount);
       if (quickAddCount >= maxQuickAdd) {
         toast.error(`Maximum quick add limit reached (${maxQuickAdd})`);
         return;
@@ -173,9 +164,9 @@ export function ProductCard({
                 <motion.button
                   type="button"
                   onClick={handleAddToCart}
-                  disabled={isLoading || quickAddCount >= getMaxQuickAddQuantity(stockCount)}
+                  disabled={isLoading || quickAddCount >= getMaxQuantity(stockCount)}
                   className={`p-2 rounded-lg ${
-                    isLoading || quickAddCount >= getMaxQuickAddQuantity(stockCount)
+                    isLoading || quickAddCount >= getMaxQuantity(stockCount)
                       ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
                       : 'bg-[#E6B325]/10 text-[#E6B325] hover:bg-[#E6B325]/20'
                   } transition-colors`}

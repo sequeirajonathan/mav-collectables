@@ -23,13 +23,22 @@ export function useUpdateSquareCustomer() {
     '/square/customers/update',
     updateCustomer,
     {
-      onSuccess: () => {
-        toast.success('Customer information updated successfully');
+      onSuccess: (data) => {
+        // Only show success toast if it's not an address suggestion
+        if (!data || typeof data !== 'object' || !('status' in data) || data.status !== 'address_suggestion') {
+          toast.success('Customer information updated successfully');
+        }
       },
       onError: (error) => {
         if (error instanceof AxiosError) {
           console.error('Error updating customer:', error.response?.data || error.message);
-          toast.error(error.response?.data?.error || 'Failed to update customer information');
+          
+          // Handle phone number conflict specifically
+          if (error.response?.status === 409) {
+            toast.error('This phone number is already registered to another account. Please use a different number.');
+          } else {
+            toast.error(error.response?.data?.error || 'Failed to update customer information');
+          }
         } else {
           console.error('Error updating customer:', error);
           toast.error('Failed to update customer information');

@@ -1,13 +1,13 @@
 import { CategoryGroup } from "@interfaces";
 
-export interface SquareCategory {
+interface SquareCategory {
   displayName: string;
   slug: string;
   squareCategoryId: string;
 }
 
-// --- Main TCG Categories ---
-export const CATEGORY_MAPPING: Record<string, SquareCategory> = {
+// --- Full TCG Categories (Production) ---
+const FULL_CATEGORY_MAPPING: Record<string, SquareCategory> = {
   pokemon: {
     displayName: "Pokémon TCG",
     slug: "pokemon",
@@ -94,6 +94,21 @@ export const CATEGORY_MAPPING: Record<string, SquareCategory> = {
     squareCategoryId: "2UYGU6IBT5CC2XHPOFISKRDC",
   },
 };
+
+// --- Sandbox TCG Categories (Only Pokémon) ---
+const SANDBOX_CATEGORY_MAPPING: Record<string, SquareCategory> = {
+  pokemon: {
+    displayName: "Pokémon TCG",
+    slug: "pokemon",
+    squareCategoryId: "OSKD2GY6HCWDQS5UQDEXQ2NM",
+  },
+};
+
+// --- Main TCG Categories (Environment-aware) ---
+export const CATEGORY_MAPPING: Record<string, SquareCategory> = 
+  process.env.SQUARE_ENVIRONMENT === 'production' 
+    ? FULL_CATEGORY_MAPPING 
+    : SANDBOX_CATEGORY_MAPPING;
 
 // --- Collectibles ---
 export const COLLECTIBLES_MAPPING: Record<string, SquareCategory> = {

@@ -8,6 +8,7 @@ import { CartProvider } from "@contexts/CartContext";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ClerkProvider } from '@clerk/nextjs';
 import { Suspense } from 'react';
+import Script from 'next/script';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,7 +33,17 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <html 
+        lang="en" 
+        className={`${geistSans.variable} ${geistMono.variable}`}
+        suppressHydrationWarning={true}
+      >
+        <head>
+          <Script
+            src="https://web.squarecdn.com/v1/square.js"
+            strategy="beforeInteractive"
+          />
+        </head>
         <body className="antialiased min-h-screen bg-black text-white font-sans flex flex-col">
           <SWRConfig value={swrConfig}>
               <AppProvider>
